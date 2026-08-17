@@ -170,6 +170,15 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);height:100vh
 }
 .vmuted.on{display:flex;}
 #peerMuted{top:16px;left:16px;right:auto;}
+/* Prompt shown when the browser blocks remote audio until a tap */
+.snd-overlay{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  background:rgba(0,0,0,0.68);backdrop-filter:blur(8px);
+  color:#fff;border:none;padding:12px 22px;border-radius:26px;
+  font-size:13px;font-weight:700;cursor:pointer;z-index:6;
+  display:none;box-shadow:0 4px 18px rgba(0,0,0,0.4);
+}
+.snd-overlay.show{display:block;}
 /* Local camera — small Picture-in-Picture top-right, mirrored like WhatsApp */
 #localWrap{
   display:none;position:absolute;top:16px;right:16px;z-index:3;
@@ -429,6 +438,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);height:100vh
       <div class="vid-page">
         <!-- Remote video — full screen -->
         <video id="remoteVid" autoplay playsinline style="display:none"></video>
+        <!-- Shown when the browser blocks audio until a tap (mobile) -->
+        <button class="snd-overlay" id="sndOverlay" onclick="unmuteRemote()">🔇 Tap for sound</button>
         <!-- Placeholder while there is no peer video -->
         <div class="no-vid" id="noVid">
           <div class="av">👤</div>
@@ -446,6 +457,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);height:100vh
         <!-- Floating controls -->
         <div class="vctrls">
           <button class="vcbtn on" id="micBtn" onclick="toggleMic()">🎤</button>
+          <button class="vcbtn on" id="spkBtn" onclick="toggleSpk()">🔊</button>
           <button class="vcbtn on" id="camBtn" onclick="toggleCam()">📹</button>
           <button class="vcbtn on" onclick="flipCam()">🔄</button>
           <button class="vcbtn end" onclick="endCall()">📵</button>
@@ -506,6 +518,7 @@ const S = {
   isConnected: false,
   isMicOn: true,
   isCamOn: true,
+  remoteMuted: false, // remote speaker muted by user
   myName: localStorage.getItem('p2p_name') || 'User',
   myAvatar: localStorage.getItem('p2p_avatar') || '😊',
   currentRoom: '',
@@ -640,6 +653,7 @@ async function handleSignal(msg) {
       }
       // Reset the call screen back to the waiting state
       stopCallTimer();
+      resetSpk();
       document.getElementById('remoteVid').srcObject = null;
       document.getElementById('remoteVid').style.display = 'none';
       document.getElementById('noVid').style.display = 'flex';
@@ -720,15 +734,19 @@ function createPC() {
       rv.srcObject = e.streams[0];
       rv.style.display = 'block';
       document.getElementById('noVid').style.display = 'none';
-      // Desktop allows unmuted playback after a user gesture (joining counts),
-      // so try playing with sound first. Mobile blocks it — fall back to
-      // muted and unmute on tap.
-      rv.muted = false;
-      rv.play().catch(() => {
+      // Try playing with sound. Desktop usually allows it (user already
+      // clicked Join). Mobile blocks unmuted autoplay — then we fall back
+      // to muted and show a "Tap for sound" prompt; the next tap anywhere
+      // (or the speaker button) unmutes it.
+      rv.muted = S.remoteMuted;
+      rv.play().then(() => {
+        if (!S.remoteMuted) hideSndOverlay();
+      }).catch(() => {
         rv.muted = true;
+        showSndOverlay();
         rv.play().catch(() => {});
       });
-      rv.onclick = () => { rv.muted = false; };
+      rv.onclick = () => { unmuteRemote(); };
       startCallTimer();
       toast('📹 Video connected!', 'ok');
     }
@@ -949,6 +967,7 @@ function copyRoom() {
 
 function disconnect() {
   stopCallTimer();
+  resetSpk();
   if (S.ws) { S.ws.close(); S.ws = null; }
   if (S.pc) { S.pc.close(); S.pc = null; }
   if (S.dc) { S.dc = null; }
@@ -1276,6 +1295,7 @@ async function screenShare() {
 
 function endCall() {
   stopCallTimer();
+  resetSpk();
   if (S.localStream) { S.localStream.getTracks().forEach(t=>t.stop()); S.localStream=null; }
   document.getElementById('localVid').srcObject = null;
   document.getElementById('localWrap').style.display = 'none';
@@ -1321,6 +1341,7 @@ function gotoTab(tab) {
     if (!S.localStream) startVideo();
     // Show "ringing" until the peer's video arrives
     if (document.getElementById('remoteVid').style.display !== 'block') setVStatus('Ringing…');
+    tryUnmuteRemote(); // audio may have been blocked until now
   }
 }
 
@@ -1368,6 +1389,50 @@ async function flipCam() {
   } catch(e) { toast('❌ Camera: ' + e.message, 'err'); }
 }
 
+// Remote-audio controls (fixes "no voice": mobile blocks unmuted autoplay)
+function showSndOverlay() { document.getElementById('sndOverlay').classList.add('show'); }
+function hideSndOverlay() { document.getElementById('sndOverlay').classList.remove('show'); }
+
+// Try to play the remote audio with sound — used on track arrival, on tab
+// switch and on any tap (user gesture satisfies the autoplay policy).
+function tryUnmuteRemote() {
+  const rv = document.getElementById('remoteVid');
+  if (!rv || !rv.srcObject || S.remoteMuted) return;
+  if (rv.muted) {
+    rv.muted = false;
+    rv.play().then(() => hideSndOverlay()).catch(() => { rv.muted = true; });
+  }
+}
+
+function unmuteRemote() {
+  const rv = document.getElementById('remoteVid');
+  if (!rv || !rv.srcObject) return;
+  S.remoteMuted = false;
+  rv.muted = false;
+  rv.play().then(() => hideSndOverlay()).catch(() => { rv.muted = true; });
+  const btn = document.getElementById('spkBtn');
+  btn.textContent = '🔊';
+  btn.className = 'vcbtn on';
+}
+
+function toggleSpk() {
+  const rv = document.getElementById('remoteVid');
+  if (!rv || !rv.srcObject) { toast('⚠️ No remote audio yet', 'warn'); return; }
+  S.remoteMuted = !S.remoteMuted;
+  rv.muted = S.remoteMuted;
+  const btn = document.getElementById('spkBtn');
+  btn.textContent = S.remoteMuted ? '🔇' : '🔊';
+  btn.className = S.remoteMuted ? 'vcbtn off' : 'vcbtn on';
+  if (!S.remoteMuted) rv.play().then(() => hideSndOverlay()).catch(() => {});
+}
+
+function resetSpk() {
+  S.remoteMuted = false;
+  hideSndOverlay();
+  const btn = document.getElementById('spkBtn');
+  if (btn) { btn.textContent = '🔊'; btn.className = 'vcbtn on'; }
+}
+
 function setStatus(st, txt) {
   document.getElementById('sdot').className = 'sdot ' + st;
   document.getElementById('stxt').textContent = txt;
@@ -1392,6 +1457,9 @@ window.addEventListener('load',()=>{
   const n=localStorage.getItem('p2p_name')||'';
   document.getElementById('nameInp').value=n;
   renderSavedRooms();
+  // Any tap counts as a user gesture — use it to enable remote audio
+  // (mobile browsers block unmuted autoplay until the first tap).
+  document.addEventListener('pointerdown', tryUnmuteRemote);
 });
 </script>
 </body>
