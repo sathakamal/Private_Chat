@@ -144,44 +144,72 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);height:100vh
 .conn-dots span:nth-child(3){animation-delay:.32s;}
 @keyframes bounce{0%,80%,100%{transform:scale(0)}40%{transform:scale(1)}}
 
-/* VIDEO PAGE */
-.vid-page{background:#000;position:relative;flex:1;}
-.vgrid{display:grid;grid-template-columns:1fr 1fr;gap:3px;height:100%;}
-.vgrid.solo{grid-template-columns:1fr;}
-.vwrap{position:relative;background:#111;overflow:hidden;}
-.vwrap video{width:100%;height:100%;object-fit:cover;display:block;}
-.vlbl{
-  position:absolute;bottom:8px;left:10px;background:rgba(0,0,0,0.6);
-  color:#fff;font-size:10px;padding:3px 9px;border-radius:10px;font-weight:600;
+/* VIDEO PAGE — WhatsApp-style call screen */
+.vid-page{background:#0B141A;position:relative;flex:1;overflow:hidden;}
+/* Remote video fills the whole screen */
+#remoteVid{
+  position:absolute;inset:0;width:100%;height:100%;
+  object-fit:cover;display:block;background:#0B141A;
 }
-.vmuted{
-  position:absolute;top:8px;right:8px;background:rgba(244,67,54,0.9);
-  color:#fff;width:26px;height:26px;border-radius:50%;
-  display:none;align-items:center;justify-content:center;font-size:11px;
-}
-.vmuted.on{display:flex;}
+/* Placeholder shown while there is no peer video */
 .no-vid{
   position:absolute;inset:0;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;color:#555;gap:8px;
+  align-items:center;justify-content:center;color:#8696A0;gap:10px;
+  background:linear-gradient(180deg,#0B141A,#111B21);
 }
 .no-vid .av{
-  width:68px;height:68px;background:#222;border-radius:50%;
-  display:flex;align-items:center;justify-content:center;font-size:30px;
+  width:92px;height:92px;background:#202C33;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;font-size:44px;
+  box-shadow:0 8px 30px rgba(0,0,0,0.4);
 }
+.vmuted{
+  position:absolute;top:8px;right:8px;background:rgba(244,67,54,0.92);
+  color:#fff;width:26px;height:26px;border-radius:50%;
+  display:none;align-items:center;justify-content:center;font-size:11px;
+  z-index:5;
+}
+.vmuted.on{display:flex;}
+#peerMuted{top:16px;left:16px;right:auto;}
+/* Local camera — small Picture-in-Picture top-right, mirrored like WhatsApp */
+#localWrap{
+  display:none;position:absolute;top:16px;right:16px;z-index:3;
+  width:min(130px,30vw);height:min(170px,38vh);
+  border-radius:14px;overflow:hidden;background:#111B21;
+  border:1px solid rgba(255,255,255,0.18);
+  box-shadow:0 6px 28px rgba(0,0,0,0.55);
+}
+#localWrap video{
+  width:100%;height:100%;object-fit:cover;display:block;
+  transform:scaleX(-1);
+}
+#localWrap video.unmirror{transform:none;}
+/* Call status pill (ringing / elapsed time) */
+.vstatus{
+  position:absolute;top:16px;left:50%;transform:translateX(-50%);
+  background:rgba(11,20,26,0.65);backdrop-filter:blur(10px);
+  color:#fff;padding:8px 18px;border-radius:20px;
+  font-size:12px;font-weight:600;z-index:4;display:none;
+  letter-spacing:0.5px;
+}
+/* Floating control bar, centered at the bottom */
 .vctrls{
-  position:absolute;bottom:0;left:0;right:0;padding:16px 20px;
-  background:linear-gradient(transparent,rgba(0,0,0,0.85));
-  display:flex;justify-content:center;gap:14px;
+  position:absolute;bottom:26px;left:50%;transform:translateX(-50%);
+  display:flex;align-items:center;gap:14px;
+  background:rgba(17,27,33,0.7);backdrop-filter:blur(14px);
+  padding:12px 18px;border-radius:44px;z-index:4;
+  box-shadow:0 6px 26px rgba(0,0,0,0.5);
 }
 .vcbtn{
-  width:50px;height:50px;border-radius:50%;border:none;
+  width:48px;height:48px;border-radius:50%;border:none;
   font-size:18px;cursor:pointer;transition:all 0.2s;
   display:flex;align-items:center;justify-content:center;color:#fff;
+  background:rgba(255,255,255,0.16);
 }
 .vcbtn:active{transform:scale(0.88);}
-.vcbtn.on{background:rgba(255,255,255,0.2);}
+.vcbtn.on{background:rgba(255,255,255,0.22);}
 .vcbtn.off{background:#F44336;}
-.vcbtn.end{background:#F44336;width:58px;height:58px;font-size:20px;}
+.vcbtn.end{background:#F44336;width:58px;height:58px;font-size:22px;}
+@media(max-width:400px){.vctrls{gap:10px;padding:10px 14px;}.vcbtn{width:42px;height:42px;font-size:16px;}.vcbtn.end{width:52px;height:52px;}}
 
 /* CHAT PAGE */
 .chat-pg{flex:1;display:flex;flex-direction:column;overflow:hidden;}
@@ -266,8 +294,6 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);height:100vh
 .mhdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
 .mhdr h3{font-size:15px;font-weight:700;}
 .mcls{background:none;border:none;font-size:20px;cursor:pointer;color:var(--text2);}
-
-@media(max-width:400px){.vctrls{gap:10px;}.vcbtn{width:44px;height:44px;font-size:16px;}.vcbtn.end{width:52px;height:52px;}}
 </style>
 </head>
 <body>
@@ -401,26 +427,27 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);height:100vh
     <!-- VIDEO PAGE -->
     <div class="page" id="pg-video">
       <div class="vid-page">
-        <div class="vgrid" id="vgrid">
-          <div class="vwrap">
-            <video id="localVid" autoplay muted playsinline></video>
-            <div class="vlbl">You (📹 Local)</div>
-            <div class="vmuted" id="myMuted">🔇</div>
-          </div>
-          <div class="vwrap">
-            <div class="no-vid" id="noVid">
-              <div class="av">👤</div>
-              <p style="font-size:12px">Peer not connected</p>
-              <small style="font-size:10px;color:#555">Connect first, then start video</small>
-            </div>
-            <video id="remoteVid" autoplay playsinline style="display:none"></video>
-            <div class="vlbl" id="remLbl" style="display:none">Peer (📹 Remote)</div>
-            <div class="vmuted" id="peerMuted">🔇</div>
-          </div>
+        <!-- Remote video — full screen -->
+        <video id="remoteVid" autoplay playsinline style="display:none"></video>
+        <!-- Placeholder while there is no peer video -->
+        <div class="no-vid" id="noVid">
+          <div class="av">👤</div>
+          <p style="font-size:14px;font-weight:600">Connecting...</p>
+          <small style="font-size:11px;color:#8696A0">Waiting for peer video...</small>
         </div>
+        <div class="vmuted" id="peerMuted">🔇</div>
+        <!-- Call status (ringing / elapsed time) -->
+        <div class="vstatus" id="vstatus"></div>
+        <!-- Local camera — small Picture-in-Picture top-right -->
+        <div id="localWrap">
+          <video id="localVid" autoplay muted playsinline></video>
+          <div class="vmuted" id="myMuted">🔇</div>
+        </div>
+        <!-- Floating controls -->
         <div class="vctrls">
           <button class="vcbtn on" id="micBtn" onclick="toggleMic()">🎤</button>
           <button class="vcbtn on" id="camBtn" onclick="toggleCam()">📹</button>
+          <button class="vcbtn on" onclick="flipCam()">🔄</button>
           <button class="vcbtn end" onclick="endCall()">📵</button>
           <button class="vcbtn on" onclick="screenShare()">🖥️</button>
           <button class="vcbtn on" onclick="gotoTab('chat')">💬</button>
@@ -491,6 +518,7 @@ const S = {
   savedRooms: JSON.parse(localStorage.getItem('p2p_rooms') || '[]'),
   isInitiator: false, // true = Person A (creates offer)
   polite: false,      // polite peer rolls back on glare; impolite peer's offer wins
+  callTimer: null,    // video call elapsed-time interval
   fileReceiving: {},
 };
 
@@ -610,6 +638,12 @@ async function handleSignal(msg) {
         setStatus('error', '🔴 Peer disconnected');
         S.isConnected = false;
       }
+      // Reset the call screen back to the waiting state
+      stopCallTimer();
+      document.getElementById('remoteVid').srcObject = null;
+      document.getElementById('remoteVid').style.display = 'none';
+      document.getElementById('noVid').style.display = 'flex';
+      setVStatus('Ringing…');
       break;
 
     case 'error':
@@ -686,7 +720,6 @@ function createPC() {
       rv.srcObject = e.streams[0];
       rv.style.display = 'block';
       document.getElementById('noVid').style.display = 'none';
-      document.getElementById('remLbl').style.display = 'block';
       // Desktop allows unmuted playback after a user gesture (joining counts),
       // so try playing with sound first. Mobile blocks it — fall back to
       // muted and unmute on tap.
@@ -696,6 +729,7 @@ function createPC() {
         rv.play().catch(() => {});
       });
       rv.onclick = () => { rv.muted = false; };
+      startCallTimer();
       toast('📹 Video connected!', 'ok');
     }
   };
@@ -914,10 +948,17 @@ function copyRoom() {
 }
 
 function disconnect() {
+  stopCallTimer();
   if (S.ws) { S.ws.close(); S.ws = null; }
   if (S.pc) { S.pc.close(); S.pc = null; }
   if (S.dc) { S.dc = null; }
   if (S.localStream) { S.localStream.getTracks().forEach(t=>t.stop()); S.localStream=null; }
+  // Reset the call screen UI
+  document.getElementById('localVid').srcObject = null;
+  document.getElementById('localWrap').style.display = 'none';
+  document.getElementById('remoteVid').srcObject = null;
+  document.getElementById('remoteVid').style.display = 'none';
+  document.getElementById('noVid').style.display = 'flex';
   S.isConnected = false;
   S.currentRoom = '';
   setStatus('', 'Not Connected');
@@ -1164,6 +1205,7 @@ async function startVideo() {
     });
     S.localStream = stream;
     document.getElementById('localVid').srcObject = stream;
+    document.getElementById('localWrap').style.display = 'block';
     if (S.pc && S.isConnected) {
       stream.getTracks().forEach(t => {
         const sender = S.pc.getSenders().find(s => s.track?.kind === t.kind);
@@ -1207,7 +1249,9 @@ async function screenShare() {
   try {
     const stream = await navigator.mediaDevices.getDisplayMedia({ video:true, audio:true });
     S.screenStream = stream;
-    document.getElementById('localVid').srcObject = stream;
+    const lv = document.getElementById('localVid');
+    lv.srcObject = stream;
+    lv.classList.add('unmirror'); // screen share is not mirrored
     const vt = stream.getVideoTracks()[0];
     if (S.pc) {
       const sender = S.pc.getSenders().find(s=>s.track?.kind==='video');
@@ -1217,6 +1261,7 @@ async function screenShare() {
     vt.onended = () => {
       if (S.localStream) {
         document.getElementById('localVid').srcObject = S.localStream;
+        document.getElementById('localVid').classList.remove('unmirror');
         const ot = S.localStream.getVideoTracks()[0];
         if (S.pc && ot) {
           const sender = S.pc.getSenders().find(s=>s.track?.kind==='video');
@@ -1230,12 +1275,13 @@ async function screenShare() {
 }
 
 function endCall() {
+  stopCallTimer();
   if (S.localStream) { S.localStream.getTracks().forEach(t=>t.stop()); S.localStream=null; }
   document.getElementById('localVid').srcObject = null;
+  document.getElementById('localWrap').style.display = 'none';
   document.getElementById('remoteVid').srcObject = null;
   document.getElementById('remoteVid').style.display = 'none';
   document.getElementById('noVid').style.display = 'flex';
-  document.getElementById('remLbl').style.display = 'none';
   toast('📵 Call ended','warn');
   gotoTab('chat');
 }
@@ -1271,7 +1317,55 @@ function gotoTab(tab) {
     document.getElementById('msgInp').focus();
     document.getElementById('chatMsgs').scrollTop=9999;
   }
-  if (tab==='video' && !S.localStream) startVideo();
+  if (tab==='video') {
+    if (!S.localStream) startVideo();
+    // Show "ringing" until the peer's video arrives
+    if (document.getElementById('remoteVid').style.display !== 'block') setVStatus('Ringing…');
+  }
+}
+
+// WhatsApp-style helpers for the call screen
+function setVStatus(txt) {
+  const el = document.getElementById('vstatus');
+  if (el) { el.textContent = txt; el.style.display = 'block'; }
+}
+
+function startCallTimer() {
+  clearInterval(S.callTimer);
+  const t0 = Date.now();
+  setVStatus('00:00');
+  S.callTimer = setInterval(() => {
+    const s = Math.floor((Date.now()-t0)/1000);
+    const m = Math.floor(s/60), r = s%60;
+    setVStatus(String(m).padStart(2,'0') + ':' + String(r).padStart(2,'0'));
+  }, 1000);
+}
+
+function stopCallTimer() {
+  clearInterval(S.callTimer);
+  S.callTimer = null;
+}
+
+// Switch between front and back camera (mobile) — replaces the video track
+async function flipCam() {
+  const cur = S.localStream?.getVideoTracks()[0];
+  if (!cur) return;
+  const facing = cur.getSettings().facingMode === 'user' ? 'environment' : 'user';
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: facing, width:{ideal:1280}, height:{ideal:720} }
+    });
+    const newVt = stream.getVideoTracks()[0];
+    S.localStream.removeTrack(cur);
+    cur.stop();
+    S.localStream.addTrack(newVt);
+    document.getElementById('localVid').srcObject = S.localStream;
+    if (S.pc) {
+      const sender = S.pc.getSenders().find(s => s.track?.kind === 'video');
+      if (sender) sender.replaceTrack(newVt);
+    }
+    toast('🔄 Camera switched', 'ok');
+  } catch(e) { toast('❌ Camera: ' + e.message, 'err'); }
 }
 
 function setStatus(st, txt) {
