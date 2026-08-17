@@ -490,6 +490,7 @@ const S = {
   typingTimer: null,
   savedRooms: JSON.parse(localStorage.getItem('p2p_rooms') || '[]'),
   isInitiator: false, // true = Person A (creates offer)
+  polite: false,      // polite peer rolls back on glare; impolite peer's offer wins
   fileReceiving: {},
 };
 
@@ -499,6 +500,14 @@ const ICE = {
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun.cloudflare.com:3478' },
+    // Free public TURN relay — lets media flow through symmetric NATs
+    // (mobile networks / CGNAT) where STUN hole-punching fails. For a
+    // permanent setup, replace with your own coturn server credentials.
+    {
+      urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turns:openrelay.metered.ca:443'],
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
+    }
   ]
 };
 
@@ -569,16 +578,18 @@ async function handleSignal(msg) {
       break;
 
     case 'peer_joined':
-      // Other person joined — I'm the initiator
+      // Other person joined — I'm the initiator (impolite: my offer wins glare)
       toast(`✅ ${msg.name} joined!`, 'ok');
       S.isInitiator = true;
+      S.polite = false;
       addSysMsg(`👋 ${msg.name} joined the room`);
       await startPeerConnection(true);
       break;
 
     case 'offer':
-      // I received an offer — I'm the responder
+      // I received an offer — I'm the responder (polite: I roll back on glare)
       S.isInitiator = false;
+      S.polite = true;
       await handleOffer(msg.sdp);
       break;
 
@@ -676,9 +687,14 @@ function createPC() {
       rv.style.display = 'block';
       document.getElementById('noVid').style.display = 'none';
       document.getElementById('remLbl').style.display = 'block';
-      // Mobile browsers block unmuted autoplay — start muted, unmute on tap
-      rv.muted = true;
-      rv.play().catch(() => {});
+      // Desktop allows unmuted playback after a user gesture (joining counts),
+      // so try playing with sound first. Mobile blocks it — fall back to
+      // muted and unmute on tap.
+      rv.muted = false;
+      rv.play().catch(() => {
+        rv.muted = true;
+        rv.play().catch(() => {});
+      });
       rv.onclick = () => { rv.muted = false; };
       toast('📹 Video connected!', 'ok');
     }
@@ -700,14 +716,44 @@ async function handleOffer(sdp) {
       if (!kinds.has(t.kind)) S.pc.addTrack(t, S.localStream);
     });
   }
-  await S.pc.setRemoteDescription(new RTCSessionDescription(sdp));
-  const answer = await S.pc.createAnswer();
-  await S.pc.setLocalDescription(answer);
-  wsSend({ type: 'answer', sdp: S.pc.localDescription });
+  const pc = S.pc;
+  try {
+    // Perfect negotiation — resolve glare when both peers send offers at once
+    // (e.g. both open the Video tab at the same time). Without this, the
+    // call silently fails and both sides stay black with no audio.
+    if (pc.signalingState === 'have-local-offer') {
+      if (S.polite) {
+        await pc.setLocalDescription({ type: 'rollback' });
+      } else {
+        // Our offer is already in flight; the polite peer will roll back.
+        console.log('Glare: ignoring incoming offer (impolite)');
+        return;
+      }
+    } else if (pc.signalingState === 'have-remote-offer') {
+      await pc.setLocalDescription({ type: 'rollback' });
+    }
+    await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    wsSend({ type: 'answer', sdp: pc.localDescription });
+  } catch (e) {
+    console.error('Offer handling error:', e);
+  }
 }
 
 async function handleAnswer(sdp) {
-  await S.pc?.setRemoteDescription(new RTCSessionDescription(sdp));
+  const pc = S.pc;
+  if (!pc) return;
+  try {
+    if (pc.signalingState === 'have-remote-offer') {
+      // Stale answer for an offer we already replaced during glare — ignore.
+      console.log('Ignoring stale answer');
+      return;
+    }
+    await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+  } catch (e) {
+    console.error('Answer handling error:', e);
+  }
 }
 
 async function addIceCandidate(candidate) {
@@ -803,6 +849,21 @@ function onP2PConnected() {
   addSysMsg('🔗 Connected! P2P encrypted chat active.');
   gotoTab('chat');
   toast('🎉 Connected! Say hello!', 'ok');
+
+  // If the camera/mic was started while the P2P link was still connecting,
+  // the tracks were never attached to the connection — push them now.
+  if (S.localStream) {
+    const attached = new Set(S.pc.getSenders().map(s => s.track));
+    const needReneg = S.localStream.getTracks().some(t => !attached.has(t));
+    if (needReneg) {
+      S.localStream.getTracks().forEach(t => {
+        const sender = S.pc.getSenders().find(s => s.track?.kind === t.kind);
+        if (sender) sender.replaceTrack(t);
+        else S.pc.addTrack(t, S.localStream);
+      });
+      renegotiate();
+    }
+  }
 
   // Start heartbeat
   startHeartbeat();
