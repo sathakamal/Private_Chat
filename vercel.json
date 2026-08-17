@@ -1,7 +1,6 @@
 {
   "functions": {
     "api/ws.js": {
-      "runtime": "nodejs22.x",
       "maxDuration": 60
     }
   }
