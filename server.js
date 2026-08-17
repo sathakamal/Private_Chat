@@ -32,7 +32,9 @@ const server = http.createServer((req, res) => {
   }
   if (reqPath === '/') reqPath = '/index.html';
   if (reqPath === '/manifest.json') reqPath = '/manifest.json';
-  const filePath = path.join(__dirname, reqPath);
+  // Static files live in public/ (same layout as Vercel); strip leading slash
+  // because path.join resets on absolute segments.
+  const filePath = path.join(__dirname, 'public', reqPath.replace(/^\/+/, ''));
   // Prevent directory traversal
   if (!filePath.startsWith(__dirname)) {
     res.writeHead(403); res.end('Forbidden'); return;
