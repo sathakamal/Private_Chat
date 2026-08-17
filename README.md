@@ -20,3 +20,16 @@ End-to-end encrypted chat for couples. WebRTC P2P = your messages never touch th
 1. Push to GitHub
 2. Connect to Render.com
 3. Auto-deploys!
+
+## Deploy to Vercel (free, no credit card!)
+1. Push to GitHub
+2. Go to vercel.com → sign in with GitHub
+3. Import sathakamal/Private_Chat → Deploy
+4. Auto-deploys! WebSocket runs at `/api/ws`
+
+## Run locally
+```bash
+npm install
+node server.js
+# Open http://localhost:3000
+```

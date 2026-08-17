@@ -462,9 +462,10 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);height:100vh
 // =============================================
 // CONFIG — Change this to your server URL!
 // =============================================
-const SIGNAL_SERVER = location.protocol === 'https:' ? `wss://${location.host}` : `ws://${location.host}`;
-// For local testing: 'ws://localhost:3000'
-// For production: 'wss://your-app.onrender.com'
+// Local dev (node server.js):  WS at root
+// Vercel:                      WS at /api/ws
+const WS_PATH = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? '' : '/api/ws';
+const SIGNAL_SERVER = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + WS_PATH;
 
 // =============================================
 // STATE
