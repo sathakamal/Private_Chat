@@ -676,6 +676,10 @@ function createPC() {
       rv.style.display = 'block';
       document.getElementById('noVid').style.display = 'none';
       document.getElementById('remLbl').style.display = 'block';
+      // Mobile browsers block unmuted autoplay — start muted, unmute on tap
+      rv.muted = true;
+      rv.play().catch(() => {});
+      rv.onclick = () => { rv.muted = false; };
       toast('📹 Video connected!', 'ok');
     }
   };
@@ -689,9 +693,12 @@ function createPC() {
 // =============================================
 async function handleOffer(sdp) {
   if (!S.pc) createPC();
-  // Add media if available
+  // Add media if available — only once per track kind (re-offers skip re-adding)
   if (S.localStream) {
-    S.localStream.getTracks().forEach(t => S.pc.addTrack(t, S.localStream));
+    const kinds = new Set(S.pc.getSenders().map(s => s.track?.kind));
+    S.localStream.getTracks().forEach(t => {
+      if (!kinds.has(t.kind)) S.pc.addTrack(t, S.localStream);
+    });
   }
   await S.pc.setRemoteDescription(new RTCSessionDescription(sdp));
   const answer = await S.pc.createAnswer();
@@ -760,6 +767,22 @@ function handleDCMsg(msg) {
       finishFile(msg.fileId);
       break;
   }
+}
+
+// =============================================
+// RENEGOTIATION — needed when tracks are added/replaced AFTER the initial
+// offer/answer (e.g. user opens video after connecting). Without this the
+// remote side never receives the new media.
+// =============================================
+async function renegotiate() {
+  if (!S.pc || !S.isConnected || S.negotiating) return;
+  S.negotiating = true;
+  try {
+    const offer = await S.pc.createOffer();
+    await S.pc.setLocalDescription(offer);
+    wsSend({ type: 'offer', sdp: S.pc.localDescription });
+  } catch (e) { console.error('Renegotiation error:', e); }
+  S.negotiating = false;
 }
 
 // =============================================
@@ -1086,6 +1109,8 @@ async function startVideo() {
         if (sender) sender.replaceTrack(t);
         else S.pc.addTrack(t, stream);
       });
+      // Tell the peer about the new media — without this, one-way video!
+      await renegotiate();
     }
     toast('📹 Camera ready!', 'ok');
   } catch(e) {
@@ -1127,6 +1152,7 @@ async function screenShare() {
       const sender = S.pc.getSenders().find(s=>s.track?.kind==='video');
       if (sender) sender.replaceTrack(vt);
     }
+    renegotiate();
     vt.onended = () => {
       if (S.localStream) {
         document.getElementById('localVid').srcObject = S.localStream;
@@ -1135,6 +1161,7 @@ async function screenShare() {
           const sender = S.pc.getSenders().find(s=>s.track?.kind==='video');
           if (sender) sender.replaceTrack(ot);
         }
+        renegotiate();
       }
     };
     toast('🖥️ Screen sharing!', 'ok');
