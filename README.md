@@ -31,5 +31,5 @@ End-to-end encrypted chat for couples. WebRTC P2P = your messages never touch th
 ```bash
 npm install
 node server.js
-# Open http://localhost:3000
+# Open http://localhost:8000
 ```
