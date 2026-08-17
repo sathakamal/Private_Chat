@@ -220,6 +220,52 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);height:100vh
 .vcbtn.end{background:#F44336;width:58px;height:58px;font-size:22px;}
 @media(max-width:400px){.vctrls{gap:10px;padding:10px 14px;}.vcbtn{width:42px;height:42px;font-size:16px;}.vcbtn.end{width:52px;height:52px;}}
 
+/* CALL FAB — green call button on the chat page */
+.call-fab{
+  position:fixed;right:18px;bottom:18px;z-index:60;
+  width:60px;height:60px;border-radius:50%;border:none;
+  background:linear-gradient(135deg,#00A884,#00C89B);color:#fff;
+  font-size:24px;cursor:pointer;box-shadow:0 6px 22px rgba(0,168,132,0.45);
+  display:none;align-items:center;justify-content:center;
+  transition:transform 0.2s;
+}
+.call-fab.show{display:flex;}
+.call-fab:active{transform:scale(0.9);}
+
+/* Active-call banner on the chat page */
+.call-banner{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  background:#00A884;color:#fff;border:none;padding:11px;
+  font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;
+}
+
+/* CALL OVERLAY — WhatsApp-style incoming/outgoing call */
+.call-overlay{
+  position:fixed;inset:0;z-index:8000;display:none;
+  flex-direction:column;align-items:center;justify-content:center;
+  background:linear-gradient(180deg,#0B141A,#1F2C34);
+  text-align:center;
+}
+.call-overlay.show{display:flex;}
+.call-avatar{
+  width:120px;height:120px;border-radius:50%;background:#202C33;
+  display:flex;align-items:center;justify-content:center;
+  font-size:56px;margin-bottom:22px;box-shadow:0 10px 40px rgba(0,0,0,0.5);
+}
+.call-name{color:#fff;font-size:20px;font-weight:700;margin-bottom:8px;}
+.call-sub{color:#8696A0;font-size:13px;margin-bottom:42px;}
+.call-btns{display:flex;gap:44px;align-items:center;}
+.call-btn{
+  width:64px;height:64px;border-radius:50%;border:none;
+  font-size:24px;cursor:pointer;color:#fff;
+  display:flex;align-items:center;justify-content:center;
+  transition:all 0.2s;box-shadow:0 6px 20px rgba(0,0,0,0.4);
+}
+.call-btn:active{transform:scale(0.9);}
+.call-btn.acc{background:linear-gradient(135deg,#00A884,#00C89B);}
+.call-btn.decl{background:#F44336;}
+.call-btn.red{background:#F44336;}
+
 /* CHAT PAGE */
 .chat-pg{flex:1;display:flex;flex-direction:column;overflow:hidden;}
 .chat-msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:9px;-webkit-overflow-scrolling:touch;}
@@ -334,7 +380,6 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);height:100vh
     <button class="tab" id="tab-chat" onclick="gotoTab('chat')">
       💬 Chat <span class="ubadge" id="ubadge" style="display:none">0</span>
     </button>
-    <button class="tab" id="tab-video" onclick="gotoTab('video')">📹 Video</button>
   </div>
 
   <!-- MAIN -->
@@ -395,6 +440,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);height:100vh
     <!-- CHAT PAGE -->
     <div class="page" id="pg-chat">
       <div class="chat-pg">
+        <button class="call-banner" id="callBanner" style="display:none" onclick="gotoTab('video')">📞 Video call in progress — tap to return</button>
         <div class="chat-msgs" id="chatMsgs">
           <div class="msg sys"><div class="bubble">💬 P2P Chat — Encrypted & Direct</div></div>
         </div>
@@ -470,6 +516,17 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);height:100vh
   </div>
 </div>
 
+<!-- CALL FAB (WhatsApp-style call button on chat page) -->
+<button class="call-fab" id="callFab" onclick="startCall()">📞</button>
+
+<!-- CALL OVERLAY — WhatsApp-style incoming/outgoing call screen -->
+<div class="call-overlay" id="callOverlay">
+  <div class="call-avatar" id="callAvatar">👤</div>
+  <div class="call-name" id="callName">Peer</div>
+  <div class="call-sub" id="callSub">Calling...</div>
+  <div class="call-btns" id="callBtns"></div>
+</div>
+
 <!-- PROFILE MODAL -->
 <div class="modal" id="profileModal">
   <div class="mc">
@@ -521,6 +578,7 @@ const S = {
   remoteMuted: false, // remote speaker muted by user
   myName: localStorage.getItem('p2p_name') || 'User',
   myAvatar: localStorage.getItem('p2p_avatar') || '😊',
+  peerName: 'Peer',
   currentRoom: '',
   unread: 0,
   currentTab: 'connect',
@@ -623,6 +681,7 @@ async function handleSignal(msg) {
       toast(`✅ ${msg.name} joined!`, 'ok');
       S.isInitiator = true;
       S.polite = false;
+      S.peerName = msg.name;
       addSysMsg(`👋 ${msg.name} joined the room`);
       await startPeerConnection(true);
       break;
@@ -647,6 +706,7 @@ async function handleSignal(msg) {
     case 'peer_left':
       toast(`⚠️ ${msg.name} left`, 'warn');
       addSysMsg(`👋 ${msg.name} disconnected`);
+      if (CALL.state !== 'idle') endCall(false);
       if (S.isConnected) {
         setStatus('error', '🔴 Peer disconnected');
         S.isConnected = false;
@@ -858,6 +918,28 @@ function handleDCMsg(msg) {
       document.getElementById('peerMuted').className =
         msg.value ? 'vmuted' : 'vmuted on';
       break;
+    case 'call':
+      S.peerName = msg.from || S.peerName;
+      if (CALL.state === 'outgoing') {
+        // Both called at once — auto-connect
+        dcSend({ type: 'call_accept' });
+        startCallMedia();
+      } else if (CALL.state === 'idle') {
+        showCallUI('incoming', S.peerName);
+      }
+      break;
+    case 'call_accept':
+      if (CALL.state === 'outgoing') startCallMedia();
+      break;
+    case 'call_decline':
+      if (CALL.state === 'outgoing') { hideCallUI(); toast('📵 Call declined', 'warn'); }
+      break;
+    case 'call_cancel':
+      if (CALL.state === 'incoming') { hideCallUI(); toast('📵 Call cancelled', 'warn'); }
+      break;
+    case 'call_end':
+      endCall(false);
+      break;
     case 'file_meta':
       S.fileReceiving[msg.fileId] = { name:msg.name, size:msg.size, mime:msg.mime, chunks:[], received:0 };
       break;
@@ -968,6 +1050,7 @@ function copyRoom() {
 function disconnect() {
   stopCallTimer();
   resetSpk();
+  if (CALL.state !== 'idle') hideCallUI();
   if (S.ws) { S.ws.close(); S.ws = null; }
   if (S.pc) { S.pc.close(); S.pc = null; }
   if (S.dc) { S.dc = null; }
@@ -1293,7 +1376,9 @@ async function screenShare() {
   } catch(e) { if(e.name!=='NotAllowedError') toast('❌ '+e.message,'err'); }
 }
 
-function endCall() {
+function endCall(notify = true) {
+  if (notify && S.dc?.readyState === 'open') dcSend({ type: 'call_end' });
+  if (CALL.state !== 'idle') hideCallUI();
   stopCallTimer();
   resetSpk();
   if (S.localStream) { S.localStream.getTracks().forEach(t=>t.stop()); S.localStream=null; }
@@ -1330,7 +1415,14 @@ function gotoTab(tab) {
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('pg-'+tab).classList.add('active');
-  document.getElementById('tab-'+tab).classList.add('active');
+  const tb = document.getElementById('tab-'+tab);
+  if (tb) tb.classList.add('active');
+  // Call FAB: only on the chat tab while connected and not already in a call
+  const fab = document.getElementById('callFab');
+  fab.className = (S.isConnected && tab === 'chat' && CALL.state === 'idle') ? 'call-fab show' : 'call-fab';
+  // Active-call banner: lets you return to the video screen from chat
+  const banner = document.getElementById('callBanner');
+  banner.style.display = (CALL.state !== 'idle' && tab === 'chat') ? 'flex' : 'none';
   if (tab==='chat') {
     S.unread=0;
     document.getElementById('ubadge').style.display='none';
@@ -1433,6 +1525,116 @@ function resetSpk() {
   if (btn) { btn.textContent = '🔊'; btn.className = 'vcbtn on'; }
 }
 
+// =============================================
+// CALLS — WhatsApp-style call flow
+// States: idle | outgoing | incoming | active
+// =============================================
+const CALL = { state: 'idle' };
+let ringCtx = null, ringTimer = null;
+
+// Ringtone synthesized with Web Audio (no audio file needed)
+function startRingtone(kind) {
+  stopRingtone();
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    ringCtx = new AC();
+    const playTone = (freq, delay, dur, vol) => {
+      const t = ringCtx.currentTime + delay;
+      const o = ringCtx.createOscillator();
+      const g = ringCtx.createGain();
+      o.type = 'sine';
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + 0.04);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(ringCtx.destination);
+      o.start(t); o.stop(t + dur + 0.05);
+    };
+    const pattern = () => {
+      if (kind === 'in') { // incoming: quick two-tone like WhatsApp
+        playTone(440, 0, 0.35, 0.2);
+        playTone(550, 0.42, 0.35, 0.2);
+      } else {            // outgoing: single repeating tone
+        playTone(425, 0, 0.45, 0.18);
+      }
+    };
+    pattern();
+    ringTimer = setInterval(pattern, kind === 'in' ? 1600 : 1900);
+  } catch(e) { console.error('Ringtone error:', e); }
+}
+
+function stopRingtone() {
+  if (ringTimer) { clearInterval(ringTimer); ringTimer = null; }
+  if (ringCtx) { ringCtx.close().catch(()=>{}); ringCtx = null; }
+}
+
+function showCallUI(mode, name) {
+  CALL.state = mode;
+  document.getElementById('callOverlay').classList.add('show');
+  document.getElementById('callName').textContent = name || 'Peer';
+  const btns = document.getElementById('callBtns');
+  if (mode === 'incoming') {
+    document.getElementById('callSub').textContent = 'Incoming video call...';
+    btns.innerHTML = `
+      <button class="call-btn decl" onclick="declineCall()">📵</button>
+      <button class="call-btn acc" onclick="acceptCall()">📹</button>`;
+    startRingtone('in');
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+  } else {
+    document.getElementById('callSub').textContent = 'Calling...';
+    btns.innerHTML = `<button class="call-btn red" onclick="cancelCall()">📵</button>`;
+    startRingtone('out');
+  }
+}
+
+function hideCallUI() {
+  CALL.state = 'idle';
+  stopRingtone();
+  if (navigator.vibrate) navigator.vibrate(0);
+  document.getElementById('callOverlay').classList.remove('show');
+}
+
+// Start a video call to the connected peer
+function startCall() {
+  if (CALL.state !== 'idle') return;
+  if (!S.isConnected || !S.dc || S.dc.readyState !== 'open') {
+    toast('⚠️ Connect first!', 'warn'); return;
+  }
+  showCallUI('outgoing', S.peerName);
+  dcSend({ type: 'call', from: S.myName });
+}
+
+// Callee pressed the green accept button
+async function acceptCall() {
+  if (CALL.state !== 'incoming') return;
+  dcSend({ type: 'call_accept' });
+  await startCallMedia();
+}
+
+function declineCall() {
+  if (CALL.state !== 'incoming') return;
+  hideCallUI();
+  dcSend({ type: 'call_decline' });
+  toast('📵 Call declined', 'warn');
+}
+
+// Caller cancelled the outgoing call
+function cancelCall() {
+  if (CALL.state !== 'outgoing') return;
+  hideCallUI();
+  dcSend({ type: 'call_cancel' });
+  toast('📵 Call cancelled', 'warn');
+}
+
+// Both sides run this when the call is accepted — start camera + show video
+async function startCallMedia() {
+  hideCallUI();
+  CALL.state = 'active';
+  await startVideo();
+  gotoTab('video');
+}
+
 function setStatus(st, txt) {
   document.getElementById('sdot').className = 'sdot ' + st;
   document.getElementById('stxt').textContent = txt;
@@ -1458,8 +1660,12 @@ window.addEventListener('load',()=>{
   document.getElementById('nameInp').value=n;
   renderSavedRooms();
   // Any tap counts as a user gesture — use it to enable remote audio
-  // (mobile browsers block unmuted autoplay until the first tap).
-  document.addEventListener('pointerdown', tryUnmuteRemote);
+  // (mobile browsers block unmuted autoplay) and to start the ringtone
+  // context if a call came in before the first tap.
+  document.addEventListener('pointerdown', () => {
+    tryUnmuteRemote();
+    if (ringCtx && ringCtx.state === 'suspended') ringCtx.resume();
+  });
 });
 </script>
 </body>
