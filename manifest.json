@@ -1,0 +1,17 @@
+{
+  "name": "P2P Chat",
+  "short_name": "P2P Chat",
+  "description": "Private P2P video calls & text chat — end-to-end encrypted, no third party.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0D47A1",
+  "theme_color": "#1565C0",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%231565C0'/><text x='50' y='65' font-size='50' text-anchor='middle' fill='white'>💬</text></svg>",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
